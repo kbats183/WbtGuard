@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace WbtGuardService
+﻿namespace WbtGuardService
 {
     public class GuardServiceConfig
     {
@@ -12,8 +10,8 @@ namespace WbtGuardService
         //分号隔开的环境变量  a=b;b=c
         public string Env { get; set; }
         public string Name { get; set; }
-
         public bool ShowUI { get; set; }
+        public bool Autostart { get; set; }
 
         public Dictionary<string, string> GetEnvironmentVariables()
         {
@@ -24,20 +22,22 @@ namespace WbtGuardService
             }
 
             var list = Env.Split(";", StringSplitOptions.RemoveEmptyEntries);
-            foreach(var item in list)
+            foreach (var item in list)
             {
                 var vs = item.Split("=", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 env.Add(vs[0], vs[1]);
             }
+
             return env;
         }
 
-        internal static GuardServiceConfig Load(IConfiguration config, string  key)
+        static internal GuardServiceConfig Load(IConfiguration config, string key)
         {
-            bool.TryParse(config[$"{key}:showui"],out var showUI);
+            bool.TryParse(config[$"{key}:showui"], out var showUI);
+            bool autoStart = !bool.TryParse(config[$"{key}:autostart"], out autoStart) || autoStart;
             return new GuardServiceConfig
             {
-                Name = key.Split(":")[1],
+                Name = key.Split(":", 2)[1],
                 Arguments = config[$"{key}:arguments"],
                 Command = config[$"{key}:command"],
                 Directory = config[$"{key}:directory"],
@@ -45,7 +45,7 @@ namespace WbtGuardService
                 StdOutFile = config[$"{key}:stdout_logfile"],
                 Env = config[$"{key}:env"],
                 ShowUI = showUI,
-
+                Autostart = autoStart,
             };
         }
     }
@@ -55,7 +55,8 @@ namespace WbtGuardService
         public static List<GuardServiceConfig> Load(IConfiguration config)
         {
             List<GuardServiceConfig> gsc = new List<GuardServiceConfig>();
-            var programs = config.AsEnumerable().Where(x => x.Key.StartsWith("program:", StringComparison.OrdinalIgnoreCase) && x.Key.Split(":").Length == 2);
+            var programs = config.AsEnumerable().Where(x =>
+                x.Key.StartsWith("program:", StringComparison.OrdinalIgnoreCase) && x.Key.Split(":").Length == 2);
             foreach (var c in programs)
             {
                 var wsc = GuardServiceConfig.Load(config, c.Key);
@@ -68,5 +69,4 @@ namespace WbtGuardService
             return gsc;
         }
     }
-
 }

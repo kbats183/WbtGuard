@@ -11,9 +11,9 @@ var identity = WindowsIdentity.GetCurrent();
 var principal = new WindowsPrincipal(identity);
 if (!principal.IsInRole(WindowsBuiltInRole.Administrator))
 {
-    Console.WriteLine("服务安装需要使用管理员权限运行！");
-    Console.WriteLine("请右键使用管理员权限重新运行！");
-    Console.WriteLine("按任意键退出程序！");
+    Console.WriteLine("The service installation needs to be run with administrator privileges!");
+    Console.WriteLine("Please right-click to re-run with administrator privileges!");
+    Console.WriteLine("Press any key to exit the program!");
     Console.ReadKey();
     Environment.Exit(exitCode: 0);
 }
@@ -26,11 +26,11 @@ var rc = HostFactory.Run(x =>
         s.ConstructUsing(name => new GuardService(args));
         s.WhenStarted(tc => tc.Start());
         s.WhenStopped(tc => tc.Stop());
-        s.WhenShutdown(tc => tc.Shutdown());       
+        s.WhenShutdown(tc => tc.Shutdown());
     });
     x.RunAsLocalSystem();
     x.EnablePowerEvents();
-    
+
 
     x.SetDescription("the common guard service, same as  supervisor on linux");
     x.SetDisplayName("Guard Service");
@@ -42,6 +42,5 @@ Environment.ExitCode = (int)exitCode;
 
 if (exitCode != 0)
 {
-    logger.Error($"程序非正常退出： {exitCode.ToString()}");
+    logger.Error($"The program exits abnormally: {exitCode.ToString()} {rc.ToString()}");
 }
-

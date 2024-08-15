@@ -1,32 +1,19 @@
-﻿using CliWrap;
-
-using Microsoft.Win32.SafeHandles;
-
-using System;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
-using System.IO.Pipes;
-using System.Runtime.InteropServices;
-using System.Security.Permissions;
 using System.Text;
-using System.Text.Unicode;
-
 using Topshelf.Logging;
-
-using WbtGuardService.Utils;
 
 namespace WbtGuardService.Utils
 {
     public class ProcessExecutor : IDisposable
     {
-
         private readonly GuardServiceConfig config;
-        private Process nativeProcess;
+        private Process originProcess;
         private int originPid;
         private FileStream stdoutStream;
         private FileStream stderrorStream;
         private readonly LogWriter _logger;
-        private bool _isManualStop = false;
+        private bool _isManualStop;
 
         public ProcessExecutor(GuardServiceConfig config)
         {
@@ -40,21 +27,21 @@ namespace WbtGuardService.Utils
                 try
                 {
                     stdoutStream = new FileStream(this.config.StdOutFile, FileMode.OpenOrCreate | FileMode.Append,
-                    FileAccess.Write, FileShare.ReadWrite);
+                        FileAccess.Write, FileShare.ReadWrite);
                 }
                 catch
                 {
                     _logger.Warn($"打开文件 {this.config.StdOutFile} 失败，禁用输出日志");
                     stdoutStream = null;
                 }
-
             }
+
             if (redirectStdErr)
             {
                 try
                 {
                     stderrorStream = new FileStream(this.config.StdErrorFile, FileMode.OpenOrCreate | FileMode.Append,
-                    FileAccess.Write, FileShare.ReadWrite);
+                        FileAccess.Write, FileShare.ReadWrite);
                 }
                 catch
                 {
@@ -62,9 +49,12 @@ namespace WbtGuardService.Utils
                     stderrorStream = null;
                 }
             }
+
+            _isManualStop = !config.Autostart;
         }
 
         public string Name => this.config.Name;
+
         /// <summary>
         /// 定时检查执行
         /// </summary>
@@ -73,76 +63,82 @@ namespace WbtGuardService.Utils
         {
             if (_isManualStop) return null;
 
-            var bDir = !string.IsNullOrEmpty(this.config.Directory);
-            Process p = Process.GetProcessesByName(config.Name)?.FirstOrDefault();
-            nativeProcess = p;
-            var mp = new MyProcessInfo(p);
-            if (p == null)
-            {
-                mp = StartProcess();  
-            }
-            else if (originPid == 0 || originPid != p.Id)
-            {
-                if (stdoutStream == null && stderrorStream == null)
-                {//不需要日志
-                    _logger.Info($"程序 {this.config.Name} 已经在运行中...");
-                    originPid = p.Id;                   
-                }
-                else
-                {
-                    try
-                    {
-                        mp = this.RestartProcess();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error($"执行启动 {this.config.Name} 时失败! ", ex);
-                    }
-                }
-            }
-            else
-            {// do nothing
+            Process p = GetProcessById(originPid);
+            originProcess = p;
 
-            }            
+            var mp = new MyProcessInfo(p);
+            if (p == null || p.HasExited)
+            {
+                mp = StartProcess();
+            }
+
+            // else if (originPid == 0 || originPid != p.Id)
+            // {
+            //     Console.WriteLine(@"originPid = " + originPid + @", p.Id="+ p.Id);
+            //     if (stdoutStream == null && stderrorStream == null)
+            //     {//不需要日志
+            //         _logger.Info($"Program {this.config.Name} already started...");
+            //         originPid = p.Id;                   
+            //     }
+            //     else
+            //     {
+            //         try
+            //         {
+            //             mp = this.RestartProcess();
+            //         }
+            //         catch (Exception ex)
+            //         {
+            //             _logger.Error($"执行启动 {this.config.Name} 时失败! ", ex);
+            //         }
+            //     }
+            // }
+            // else
+            // {// do nothing
+            //
+            // }            
             return mp;
         }
 
         private MyProcessInfo StopProcess()
         {
-            Process p = Process.GetProcessesByName(config.Name)?.FirstOrDefault();
-            if (p == null)
+            var p = GetProcessById(originPid);
+            if (p == null || p.HasExited)
             {
                 _logger.Info($" {this.config.Name}已经关闭.");
             }
-            else 
+            else
             {
                 try
                 {
                     _logger.Info($"关闭程序 {this.config.Name} ...");
                     // kill & restart
                     p.Kill(true);
+                    p.WaitForExit();
                     _logger.Info($"关闭程序 {this.config.Name} 成功");
                 }
                 catch (Exception ex)
                 {
                     _logger.Error($"关闭程序 {this.config.Name} 时失败! ", ex);
                 }
-            }           
-            nativeProcess = p;
+            }
+
+            originProcess = p;
             return new MyProcessInfo(p);
         }
+
         private MyProcessInfo RestartProcess()
         {
             MyProcessInfo p = null;
             try
             {
                 p = this.StopProcess();
-                p = this.StartProcess();                
+                p = this.StartProcess();
             }
             catch (Exception ex)
             {
                 _logger.Error($"执行启动 {this.config.Name} 时失败! ", ex);
-            }           
+            }
+
             return p;
         }
 
@@ -150,10 +146,10 @@ namespace WbtGuardService.Utils
         {
             _logger.Info($"开始程序 {this.config.Name}...");
             var bDir = !string.IsNullOrEmpty(this.config.Directory);
-            Process p = Process.GetProcessesByName(config.Name)?.FirstOrDefault();
-            if (p == null)
+            var p = GetProcessById(originPid);
+            if (p == null || p.HasExited)
             {
-                var startInfo =  new ProcessStartInfo
+                var startInfo = new ProcessStartInfo
                 {
                     FileName = this.config.Command,
                     UseShellExecute = false,
@@ -161,7 +157,7 @@ namespace WbtGuardService.Utils
                     RedirectStandardError = stderrorStream != null,
                     WorkingDirectory = bDir ? this.config.Directory : AppDomain.CurrentDomain.BaseDirectory,
                     Arguments = this.config.Arguments,
-                    CreateNoWindow = true,   
+                    CreateNoWindow = true,
                     WindowStyle = ProcessWindowStyle.Hidden,
                     //StandardOutputEncoding = Encoding.UTF8,
                     //StandardErrorEncoding = Encoding.UTF8,
@@ -181,12 +177,10 @@ namespace WbtGuardService.Utils
                         startInfo.Environment.Remove(key);
                     }
                 }
-                Console.WriteLine($"start {config.Name}  ....");
-                p = new Process
-                {
-                    StartInfo =startInfo,
-                };                
-                
+
+                Console.WriteLine($"Start process {config.Name} ....");
+                p = new Process { StartInfo = startInfo, };
+
                 p.ErrorDataReceived += P_ErrorDataReceived;
                 p.OutputDataReceived += P_OutputDataReceived;
 
@@ -213,10 +207,12 @@ namespace WbtGuardService.Utils
                     );
                 }
             }
+
             originPid = p?.Id ?? 0;
-            nativeProcess = p;
-            return new MyProcessInfo(p) ;
+            originProcess = p;
+            return new MyProcessInfo(p);
         }
+
         private void P_OutputDataReceived(object sender, DataReceivedEventArgs e)
         {
             if (e?.Data != null)
@@ -227,7 +223,8 @@ namespace WbtGuardService.Utils
                     stdoutStream.Write(Encoding.UTF8.GetBytes("\r\n"));
                     stdoutStream.Flush();
                 }
-                catch {
+                catch
+                {
                     _logger.Warn($"程序 {this.config.Name} 输出日志失败! ");
                 }
             }
@@ -240,8 +237,8 @@ namespace WbtGuardService.Utils
                 try
                 {
                     stderrorStream.Write(Encoding.UTF8.GetBytes(e.Data));
-                    stdoutStream.Write(Encoding.UTF8.GetBytes("\r\n"));
-                    stdoutStream.Flush();
+                    stderrorStream.Write(Encoding.UTF8.GetBytes("\r\n"));
+                    stderrorStream.Flush();
                 }
                 catch { _logger.Warn($"程序 {this.config.Name} 输出错误日志失败! "); }
             }
@@ -255,6 +252,7 @@ namespace WbtGuardService.Utils
                 stdoutStream.Dispose();
                 _logger.Warn($"程序 {this.config.Name} 输出日志关闭! ");
             }
+
             if (stderrorStream != null)
             {
                 stderrorStream.Close();
@@ -268,7 +266,7 @@ namespace WbtGuardService.Utils
             var redirectStdOut = !string.IsNullOrEmpty(this.config.StdOutFile);
             var redirectStdErr = !string.IsNullOrEmpty(this.config.StdErrorFile);
             MyProcessInfo p = null;
-            if(command == "Start")
+            if (command == "Start")
             {
                 _isManualStop = false;
                 p = this.StartProcess();
@@ -283,100 +281,134 @@ namespace WbtGuardService.Utils
                 _isManualStop = false;
                 p = this.RestartProcess();
             }
-            else if(command == "LastLogs")
+            else if (command == "LastLogs")
             {
                 if (redirectStdOut)
                 {
-                    try
-                    {         
-                        byte[] buffer = new byte[8192];
-                        using (var stream = new FileStream(this.config.StdOutFile, FileMode.Open,
-                        FileAccess.Read, FileShare.ReadWrite))
-                        {
-                            long len = stream.Length;
-                            if (len >= 8192)
-                            {
-                                stream.Seek(len - 8192, SeekOrigin.Begin);
-                                stream.Read(buffer);
-                                var log = Encoding.UTF8.GetString(buffer);
-                                return log;
-                            }
-                            else if(len == 0)
-                            {
-                                return "";
-                            }
-                            else
-                            {
-                                stream.Seek(0, SeekOrigin.Begin);
-                                stream.Read(buffer);
-                                var log = Encoding.UTF8.GetString(buffer,0,(int)len);
-                                return log;
-                            }
-                            
-                        }
-                        
-                    }
-                    catch
-                    {
-                        _logger.Warn($"打开文件 {this.config.StdOutFile} 失败");                        
-                    }
-                    return null;
+                    return ReadTailBytesFromFile(this.config.StdOutFile);;
                 }
             }
-            else if(command == "ClearLogs")
+            else if (command == "LastErrorLogs")
+            {
+                if (redirectStdErr)
+                {
+                    return ReadTailBytesFromFile(this.config.StdErrorFile);
+                }
+            }
+            else if (command == "ClearLogs")
             {
                 if (redirectStdOut)
                 {
                     try
                     {
-                        using (var stream = new FileStream(this.config.StdOutFile,  FileMode.Truncate,
-                            FileAccess.Write, FileShare.ReadWrite))
+                        using (var stream = new FileStream(this.config.StdOutFile, FileMode.Truncate,
+                                   FileAccess.Write, FileShare.ReadWrite))
                         {
                             stream.Seek(0, SeekOrigin.Begin);
                             stream.SetLength(0);
                             stream.Flush();
                         }
+
                         stdoutStream.Close();
                         stdoutStream = new FileStream(this.config.StdOutFile, FileMode.OpenOrCreate | FileMode.Append,
-                    FileAccess.Write, FileShare.ReadWrite);
+                            FileAccess.Write, FileShare.ReadWrite);
                         _logger.Warn($"清空文件 {this.config.StdOutFile} 内容");
                     }
                     catch
                     {
                         _logger.Warn($"清空文件 {this.config.StdOutFile} 失败");
-                        
                     }
-
                 }
+
                 if (redirectStdErr)
                 {
                     try
-                    {                        
+                    {
                         using (var stream = new FileStream(this.config.StdErrorFile, FileMode.Truncate,
-                            FileAccess.Write, FileShare.ReadWrite))
+                                   FileAccess.Write, FileShare.ReadWrite))
                         {
                             stream.Seek(0, SeekOrigin.Begin);
                             stream.SetLength(0);
                             stream.Flush();
                         }
+
                         stderrorStream.Close();
-                        stderrorStream = new FileStream(this.config.StdErrorFile, FileMode.OpenOrCreate | FileMode.Append,
-                    FileAccess.Write, FileShare.ReadWrite);
-                        
+                        stderrorStream = new FileStream(this.config.StdErrorFile,
+                            FileMode.OpenOrCreate | FileMode.Append,
+                            FileAccess.Write, FileShare.ReadWrite);
+
                         _logger.Warn($"清空文件 {this.config.StdErrorFile} 内容");
                     }
                     catch
                     {
                         _logger.Warn($"清空文件 {this.config.StdErrorFile} 失败");
-
                     }
                 }
             }
-            else if(command == "Status")
+            else if (command == "Status")
             {
-                p = new MyProcessInfo(Process.GetProcessesByName(config.Name)?.FirstOrDefault());
+                p = new MyProcessInfo(GetProcessById(originPid));
             }
+
             return p;
         }
+
+        private static Process GetProcessById(int processId)
+        {
+            if (processId == 0)
+            {
+                return null;
+            }
+
+            Process p = null;
+            try
+            {
+                p = Process.GetProcessById(processId);
+                if (p.HasExited)
+                {
+                    p = null;
+                }
+            }
+            catch (ArgumentException)
+            {
+            }
+
+            return p;
+        }
+
+        private string ReadTailBytesFromFile(string file)
+        {
+            try
+            {
+                var buffer = new byte[8192];
+                using (var stream = new FileStream(file, FileMode.Open,
+                           FileAccess.Read, FileShare.ReadWrite))
+                {
+                    long len = stream.Length;
+                    if (len >= 8192)
+                    {
+                        stream.Seek(len - 8192, SeekOrigin.Begin);
+                        var n = stream.Read(buffer);
+                        return Encoding.UTF8.GetString(buffer, 0, n);
+                    }
+                    else if (len == 0)
+                    {
+                        return "";
+                    }
+                    else
+                    {
+                        stream.Seek(0, SeekOrigin.Begin);
+                        var n = stream.Read(buffer);
+                        return Encoding.UTF8.GetString(buffer, 0, Math.Min(n, (int)len));;
+                    }
+                }
+            }
+            catch
+            {
+                _logger.Warn($"打开文件 {file} 失败");
+                return null;
+            }
+            
+        } 
     }
 }

@@ -75,6 +75,30 @@ public class MonitorHub : Hub<IMonitorClient>
 
     }
 
+    public async Task LastErrorLogs(string processName)
+    {
+        CancellationTokenSource timeoutSource = new CancellationTokenSource(_timeout);
+        CancellationTokenSource waitSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutSource.Token, Context.ConnectionAborted);
+        await service.SendCommand(new Message
+        {
+            ClientId = Context.ConnectionId,
+            Command = "LastErrorLogs",
+            Content = processName,
+            ProcessName = processName,
+        }, waitSource.Token);
+
+        if (waitSource.IsCancellationRequested)
+        {
+            await Clients.Caller.LastLogs(new Message
+            {
+                Command = "ClearLog",
+                ProcessName = processName,
+                Content = "Î´Öª"
+            });
+        }
+
+    }
+
     public async Task Restart(string processName)
     {
         CancellationTokenSource timeoutSource = new CancellationTokenSource(_timeout);
@@ -84,10 +108,10 @@ public class MonitorHub : Hub<IMonitorClient>
         {
             Command = "Restart",
             ProcessName = processName,
-            Content = "ÖØÆôÖÐ",
+            Content = "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½",
             Status = new ProcessRunStatus
             {
-                Status = isCn? "ÖØÆôÖÐ" :"Restarting",                
+                Status = isCn? "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" :"Restarting",                
             }
         });        
        

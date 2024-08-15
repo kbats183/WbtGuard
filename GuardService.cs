@@ -21,7 +21,7 @@ namespace WbtGuardService
         }
         public void Start() 
         {
-            this._logger.Log(LoggingLevel.Info, "开启服务...");
+            this._logger.Log(LoggingLevel.Info, "Starting the service...");
             var builder = Host.CreateDefaultBuilder(args)
                 .ConfigureHostConfiguration(builder =>
                 {
@@ -48,7 +48,7 @@ namespace WbtGuardService
 
         }
         public void Stop() {
-            this._logger.Log(LoggingLevel.Info, "停止服务...");
+            this._logger.Log(LoggingLevel.Info, "Stop the service...");
             _stopRequested = true;
             _webHost?.Dispose();
         }
@@ -57,7 +57,7 @@ namespace WbtGuardService
             _stopRequested = true;
             _webHost?.Dispose();
 
-            this._logger.Log(LoggingLevel.Warn, "计算机关机");
+            this._logger.Log(LoggingLevel.Warn, "Computer shutdown");
         }
     }
 }

@@ -34,9 +34,8 @@
                 <h5 class="modal-title" id="staticBackdropLabel">Modal title</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body" id="logContent">
-               
-            </div>
+            <pre class="modal-body" id="logContent">
+            </pre>
             <div class="modal-footer">
                 <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>                
             </div>
@@ -49,12 +48,14 @@
         var myModal = new bootstrap.Modal(document.getElementById('log'), {
                 keyboard: true
             })
-        var tt = setInterval(execStatus,1000);
-        function execStatus(){
-            exec(null, 'Status').then(res=>{})
+        var tt = setInterval(execStatus, 1000);
+        function execStatus() {
+            if (connection.state === 'Connected') {
+                exec(null, 'Status');
+            }
         }
 
-        async function  exec(processName, command)
+        async function exec(processName, command)
         {
             await connection.invoke(command, processName);
             
@@ -80,6 +81,7 @@
                     '<a onclick="exec(\'$id\',\'Stop\')" href="javascript:void(0);">@Localizer["Stop"]</a>' +
                     '<a onclick="exec(\'$id\',\'ClearLogs\')" href="javascript:void(0);">@Localizer["Clear Logs"]</a>' +
                     '<a onclick="exec(\'$id\',\'LastLogs\')" href="javascript:void(0);">@Localizer["Logs"]</a>' +
+                    '<a onclick="exec(\'$id\',\'LastErrorLogs\')" href="javascript:void(0);">@Localizer["ErrorLogs"]</a>' +
                     '</td></tr>'
 
                 try{
@@ -134,9 +136,20 @@
         });
         connection.on("LastLogs", msg => {
             if (msg && msg.command) {
-                if (msg.command == 'LastLogs') {
+                if (msg.command === 'LastLogs') {
                     var id = msg.processName;
                     $('#staticBackdropLabel').text('@Localizer["App"] ' + id);
+                    $('#logContent').text(msg.content)
+                    myModal.show();
+
+                }
+            }            
+        });
+        connection.on("LastErrorLogs", msg => {
+            if (msg && msg.command) {
+                if (msg.command === 'LastErrorLogs') {
+                    var id = msg.processName;
+                    $('#staticBackdropLabel').text('@Localizer["App"] ' + id + " errors");
                     $('#logContent').text(msg.content)
                     myModal.show();
 

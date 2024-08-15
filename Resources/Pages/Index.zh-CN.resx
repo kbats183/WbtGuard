@@ -159,4 +159,7 @@
   <data name="Uptime:" xml:space="preserve">
     <value>运行:</value>
   </data>
+  <data name="ErrorLogs" xml:space="preserve">
+    <value>查看错误</value>
+  </data>
 </root>
