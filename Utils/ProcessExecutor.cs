@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
+using System.Security;
 using System.Text;
 using Topshelf.Logging;
 
@@ -63,40 +64,19 @@ namespace WbtGuardService.Utils
         {
             if (_isManualStop) return null;
 
-            Process p = GetProcessById(originPid);
+            var p = GetProcessById(originPid);
             originProcess = p;
 
-            var mp = new MyProcessInfo(p);
-            if (p == null || p.HasExited)
+            if (p != null && p.HasExited)
             {
-                mp = StartProcess();
+                return new MyProcessInfo(p);
+            } else if (config.Autorestart)
+            {
+                return StartProcess();
             }
 
-            // else if (originPid == 0 || originPid != p.Id)
-            // {
-            //     Console.WriteLine(@"originPid = " + originPid + @", p.Id="+ p.Id);
-            //     if (stdoutStream == null && stderrorStream == null)
-            //     {//不需要日志
-            //         _logger.Info($"Program {this.config.Name} already started...");
-            //         originPid = p.Id;                   
-            //     }
-            //     else
-            //     {
-            //         try
-            //         {
-            //             mp = this.RestartProcess();
-            //         }
-            //         catch (Exception ex)
-            //         {
-            //             _logger.Error($"执行启动 {this.config.Name} 时失败! ", ex);
-            //         }
-            //     }
-            // }
-            // else
-            // {// do nothing
-            //
-            // }            
-            return mp;
+            _isManualStop = true;
+            return new MyProcessInfo(p);
         }
 
         private MyProcessInfo StopProcess()

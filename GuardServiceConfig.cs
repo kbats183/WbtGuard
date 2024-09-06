@@ -12,6 +12,7 @@
         public string Name { get; set; }
         public bool ShowUI { get; set; }
         public bool Autostart { get; set; }
+        public bool Autorestart { get; set; }
 
         public Dictionary<string, string> GetEnvironmentVariables()
         {
@@ -35,6 +36,7 @@
         {
             bool.TryParse(config[$"{key}:showui"], out var showUI);
             bool autoStart = !bool.TryParse(config[$"{key}:autostart"], out autoStart) || autoStart;
+            bool autoRestart = !bool.TryParse(config[$"{key}:autorestart"], out autoRestart) || autoRestart;
             return new GuardServiceConfig
             {
                 Name = key.Split(":", 2)[1],
@@ -46,6 +48,7 @@
                 Env = config[$"{key}:env"],
                 ShowUI = showUI,
                 Autostart = autoStart,
+                Autorestart = autoRestart
             };
         }
     }
